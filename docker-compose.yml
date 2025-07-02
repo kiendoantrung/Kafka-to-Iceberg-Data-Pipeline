@@ -1,0 +1,173 @@
+services:
+  jobmanager:
+    build: ./flink
+    hostname: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    volumes:
+      - .:/data/
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.flamegraph.enabled: true
+        
+  taskmanager:
+    build: ./flink
+    hostname: taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    deploy:
+      replicas: 2
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.1
+    container_name: broker
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: DOCKER://broker:29092, LOCALHOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: DOCKER://broker:29092, LOCALHOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: DOCKER:PLAINTEXT,LOCALHOST:PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - 9092:9092
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc
+    container_name: mc
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb minio/warehouse || echo 'Bucket already exists';
+      /usr/bin/mc ls minio/warehouse;
+      tail -f /dev/null
+      "
+
+  postgresql:
+    image: postgres:15-alpine
+    container_name: postgresql
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  hive-metastore:
+    container_name: hms
+    build: ./hms-standalone-postgres
+    ports:
+      - "9083:9083"
+    environment:
+      - HMS_LOGLEVEL=INFO
+    depends_on:
+      - postgresql
+
+  pyiceberg:
+    image: python:3.12-bookworm
+    container_name: pyiceberg
+    environment:
+      PYICEBERG_CATALOG__DEFAULT__URI: thrift://hms:9083
+      PYICEBERG_CATALOG__DEFAULT__S3__ACCESS_KEY_ID: admin
+      PYICEBERG_CATALOG__DEFAULT__S3__SECRET_ACCESS_KEY: password
+      PYICEBERG_CATALOG__DEFAULT__S3__PATH_STYLE_ACCESS: true
+      PYICEBERG_CATALOG__DEFAULT__S3__ENDPOINT: http://minio:9000
+    depends_on:
+      - hive-metastore
+      - postgresql
+    entrypoint: >
+      /bin/sh -c "
+      pip install pyiceberg[\"s3fs,hive,pyarrow\"];
+      sleep infinity
+      "
+
+  duckdb:
+    image: davidgasquez/duckdb
+    container_name: duckdb
+    restart: no
+    entrypoint: tail -f /dev/null
+
+
+
+  kcat:
+    image: edenhill/kcat:1.7.1
+    container_name: kcat
+    restart: no
+    entrypoint: tail -f /dev/null
+
+  shadowtraffic:
+    # watch 'docker exec shadowtraffic curl -s localhost:9400/metrics |grep events_sent'
+    image: shadowtraffic/shadowtraffic:0.6.0
+    container_name: shadowtraffic
+    #    profiles: ["shadowtraffic"]
+    env_file:
+      - shadowtraffic/license.env
+    volumes:
+      - ./shadowtraffic:/data
+    command: --config /data/kafka-retail.json
+
+  # Without a network explicitly defined, you hit this Hive/Thrift error
+  # java.net.URISyntaxException Illegal character in hostname
+  # https://github.com/TrivadisPF/platys-modern-data-platform/issues/231
+
+  dremio:
+    image: dremio/dremio-oss:24.3
+    container_name: dremio
+    ports:
+      - "9047:9047" # Web UI
+      - "31010:31010" # JDBC/ODBC
+      - "32010:32010" # Arrow Flight
+    environment:
+      - SERVICES_COORDINATOR_ENABLED=true
+      - SERVICES_EXECUTOR_ENABLED=true
+      # MinIO connection settings
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    volumes:
+      - dremio_data:/opt/dremio/data
+    depends_on:
+      - minio
+
+volumes:
+  dremio_data:
+  postgres_data:
+
+networks:
+  default:
+    name: zaphod
