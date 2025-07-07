@@ -1,4 +1,20 @@
-# Kafka to Iceberg Data Pipeline
+<div align="center">
+
+# 🌊 Kafka to Iceberg Data Pipeline
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Apache-Kafka-231F20?style=for-the-badge&logo=apache-kafka&logoColor=white" alt="Kafka">
+  <img src="https://img.shields.io/badge/Apache-Flink-E6526F?style=for-the-badge&logo=apache-flink&logoColor=white" alt="Flink">
+  <img src="https://img.shields.io/badge/Apache-Iceberg-0099E5?style=for-the-badge&logo=apache&logoColor=white" alt="Iceberg">
+  <img src="https://img.shields.io/badge/MinIO-C72E49?style=for-the-badge&logo=minio&logoColor=white" alt="MinIO">
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/DuckDB-FFF000?style=for-the-badge&logo=duckdb&logoColor=black" alt="DuckDB">
+  <img src="https://img.shields.io/badge/Hive-FDEE21?style=for-the-badge&logo=apache-hive&logoColor=black" alt="Hive Metastore">
+  <img src="https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
+</p>
+
+
+</div>
 
 This project demonstrates a real-time data pipeline that streams data from Apache Kafka to Apache Iceberg using Apache Flink SQL. The pipeline processes retail order data and stores it in Iceberg format on MinIO object storage.
 
@@ -39,12 +55,19 @@ The project consists of the following components:
    ```
 
 ## Data Flow
+![image info](img/flowchart.png)
 
-1. **Data Generation**: ShadowTraffic generates realistic retail order data
-2. **Kafka Ingestion**: Orders are published to the `orders` Kafka topic
-3. **Stream Processing**: Flink SQL processes the stream and filters orders > $100
-4. **Iceberg Storage**: Filtered data is stored in Iceberg tables on MinIO
-5. **Analytics**: Data can be queried via Dremio, PyIceberg, or DuckDB
+### Catalog Integration
+
+<div align="center">
+  
+![Catalog Diagram](img/catalog-integration.png)
+
+*Iceberg Catalog Integration: Hive Metastore manages catalog metadata for Flink to access Iceberg tables stored in MinIO*
+
+</div>
+
+To use Iceberg you need to have a catalog metastore. Catalogs in Flink can be a bit complex to understand at first, but this diagram shows how the **Hive Metastore** works as the catalog provider for **Flink** to manage **Iceberg** data and metadata stored in **MinIO** (S3-compatible object store).
 
 ## Accessing Services
 
