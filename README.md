@@ -38,7 +38,7 @@ The project consists of the following components:
 
 - Docker and Docker Compose
 - At least 8GB of available RAM
-- ShadowTraffic license (place in `shadowtraffic/license.env`)
+- [ShadowTraffic](https://shadowtraffic.io/) license (place in `shadowtraffic/license.env`)
 
 ## Quick Start
 
@@ -79,13 +79,77 @@ To use Iceberg you need to have a catalog metastore. Catalogs in Flink can be a 
 | Kafka | localhost:9092 | - |
 | PostgreSQL | localhost:5432 | hive/hive |
 
+## Connecting MinIO to Dremio
+
+Dremio can query Iceberg tables stored in MinIO object storage. Follow these steps to configure the connection:
+
+### 1. Access Dremio Web UI
+- Navigate to http://localhost:9047
+- Create an admin account on first login
+
+### 2. Add MinIO as a Data Source
+
+**Step 1: Create S3-Compatible Source**
+- Click **"+ Add Source"** in the bottom left corner
+- Select **"Amazon S3"** (MinIO is S3-compatible)
+
+**Step 2: Configure Connection**
+```
+General Settings:
+├─ Name: MinIO
+├─ AWS Access Key: admin
+├─ AWS Secret Key: password
+└─ Encrypt Connection: ☐ (uncheck)
+```
+
+**Step 3: Add Connection Properties**
+
+Click **"Advanced Options"** and add these properties:
+Enable compatibility mode: ☑ (check)
+```properties
+fs.s3a.path.style.access=true
+fs.s3a.endpoint=minio:9000
+fs.s3a.connection.ssl.enabled=false
+dremio.s3.compat=true
+```
+
+**Step 4: Set Root Path (Optional)**
+- Under "Advanced Options", set Root Path to: `/warehouse`
+
+**Step 5: Save**
+- Click "Save" to create the source
+
+### Important Notes
+- MinIO endpoint from within Docker network is `minio:9000` (not `localhost`)
+- Path-style access must be enabled for MinIO compatibility
+- Default credentials: `admin/password`
+- MinIO Console is available at http://localhost:9001 for bucket management
 
 ## Troubleshooting
 
 1. **Services not starting**: Ensure you have enough memory and no port conflicts
-2. **Flink SQL errors**: Check that all dependent services are healthy first
-3. **Data not flowing**: Verify ShadowTraffic license is valid and placed correctly
-4. **Storage issues**: Check MinIO is accessible and warehouse bucket exists
+
+2. **Flink SQL Error: `java.net.UnknownHostException: hms`**
+   
+   This error occurs when Flink cannot resolve the Hive Metastore hostname. Common cause on Windows:
+   
+   **Problem**: The `init-schema.sh` file has Windows line endings (CRLF) instead of Unix line endings (LF)
+   
+   **Solution**:
+   - Open `hms-standalone-postgres/init-schema.sh` in VS Code
+   - Check the bottom-right corner of the editor
+   - If it shows `CRLF`, click on it and select `LF`
+   - Save the file and restart the services:
+     ```bash
+     docker compose down
+     docker compose up -d --build hive-metastore
+     ```
+
+3. **Flink SQL errors**: Check that all dependent services are healthy first
+
+4. **Data not flowing**: Verify ShadowTraffic license is valid and placed correctly
+
+5. **Storage issues**: Check MinIO is accessible and warehouse bucket exists
 
 ## Cleanup
 
